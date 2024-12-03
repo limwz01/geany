@@ -987,6 +987,9 @@ void Editor::MoveSelectedLines(int lineDelta) {
 		return;
 	}
 
+	Sci::Position caret = sel.MainCaret();
+	Sci::Position anchor = sel.MainAnchor();
+
 	// if selection doesn't start at the beginning of the line, set the new start
 	Sci::Position selectionStart = SelectionStart().Position();
 	const Sci::Line startLine = pdoc->SciLineFromPosition(selectionStart);
@@ -1042,7 +1045,7 @@ void Editor::MoveSelectedLines(int lineDelta) {
 		const Sci::Position lengthInserted = pdoc->InsertString(CurrentPosition() + selectionLength, eol);
 		selectionLength += lengthInserted;
 	}
-	SetSelection(CurrentPosition(), CurrentPosition() + selectionLength);
+	SetSelection(CurrentPosition() + caret - selectionStart, CurrentPosition() + anchor - selectionStart);
 }
 
 void Editor::MoveSelectedLinesUp() {
