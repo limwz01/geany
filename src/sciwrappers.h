@@ -150,6 +150,7 @@ void 				sci_clear					(ScintillaObject *sci);
 gint				sci_get_pos_at_line_sel_start(ScintillaObject*sci, gint line);
 gint				sci_get_pos_at_line_sel_end	(ScintillaObject *sci, gint line);
 void				sci_set_selection			(ScintillaObject *sci, gint anchorPos, gint currentPos);
+void 				sci_set_current_selection	(ScintillaObject *sci, gint anchorPos, gint currentPos);
 
 gint				sci_get_position_from_xy	(ScintillaObject *sci, gint x, gint y, gboolean nearby);
 

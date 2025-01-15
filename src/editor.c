@@ -311,7 +311,7 @@ static gboolean on_editor_button_press_event(GtkWidget *widget, GdkEventButton *
 		if (event->type == GDK_BUTTON_PRESS && editor_prefs.disable_dnd)
 		{
 			gint ss = sci_get_selection_start(editor->sci);
-			sci_set_selection_end(editor->sci, ss);
+			sci_set_current_position(editor->sci, ss, FALSE);
 		}
 		if (event->type == GDK_BUTTON_PRESS && state == GEANY_PRIMARY_MOD_MASK)
 		{
@@ -2518,7 +2518,7 @@ void editor_insert_text_block(GeanyEditor *editor, const gchar *text, gint inser
 		editor_indicator_set_on_range(editor, GEANY_INDICATOR_SNIPPET, start, end);
 		/* jump to first cursor position initially */
 		if (item == jump_locs)
-			sci_set_selection(sci, start, end);
+			sci_set_current_selection(sci, start, end);
 	}
 
 	/* Set cursor to the requested index, or by default to after the snippet */
@@ -2567,7 +2567,7 @@ gboolean editor_goto_next_snippet_cursor(GeanyEditor *editor)
 	if (find_next_snippet_indicator(editor, &sel))
 	{
 		sci_indicator_set(sci, GEANY_INDICATOR_SNIPPET);
-		sci_set_selection(sci, sel.start, sel.start + sel.len);
+		sci_set_current_selection(sci, sel.start, sel.start + sel.len);
 		return TRUE;
 	}
 	else
@@ -2625,9 +2625,9 @@ static gboolean snippets_complete_constructs(GeanyEditor *editor, gint pos, cons
 	 * (not really necessary but this makes the auto completion more flexible,
 	 *  e.g. with a completion like hi=hello, so typing "hi<TAB>" will result in "hello") */
 	str_len = strlen(str);
-	sci_set_selection_start(sci, pos - str_len);
-	sci_set_selection_end(sci, pos);
-	sci_replace_sel(sci, "");
+	sci_set_target_start(sci, pos - str_len);
+	sci_set_target_end(sci, pos);
+	sci_replace_target(sci, "", FALSE);
 	pos -= str_len; /* pos has changed while deleting */
 
 	editor_insert_snippet(editor, pos, completion);
@@ -2712,7 +2712,7 @@ static void insert_closing_tag(GeanyEditor *editor, gint pos, gchar ch, const gc
 	sci_start_undo_action(sci);
 	sci_replace_sel(sci, to_insert);
 	if (ch == '>')
-		sci_set_selection(sci, pos, pos);
+		sci_set_current_selection(sci, pos, pos);
 	sci_end_undo_action(sci);
 	g_free(to_insert);
 }
@@ -2879,9 +2879,13 @@ static void real_comment_multiline(GeanyEditor *editor, gint line_start, gint la
 	str_end = g_strdup_printf("%s%s", (cc != NULL) ? cc : "", eol);
 
 	/* insert the comment strings */
-	sci_insert_text(editor->sci, line_start, str_begin);
+	sci_set_target_start(editor->sci, line_start);
+	sci_set_target_end(editor->sci, line_start);
+	sci_replace_target(editor->sci, str_begin, FALSE);
 	line_len = sci_get_position_from_line(editor->sci, last_line + 2);
-	sci_insert_text(editor->sci, line_len, str_end);
+	sci_set_target_start(editor->sci, line_len);
+	sci_set_target_end(editor->sci, line_len);
+	sci_replace_target(editor->sci, str_end, FALSE);
 
 	g_free(str_begin);
 	g_free(str_end);
@@ -3072,8 +3076,9 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 						continue;
 				}
 
-				sci_set_selection(editor->sci, line_start + x, line_start + x + co_len);
-				sci_replace_sel(editor->sci, "");
+				sci_set_target_start(editor->sci, line_start + x);
+				sci_set_target_end(editor->sci, line_start + x + co_len);
+				sci_replace_target(editor->sci, "", FALSE);
 				count++;
 			}
 			/* use multi line comment */
@@ -3096,22 +3101,23 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 	}
 	sci_end_undo_action(editor->sci);
 
-	/* restore selection if there is one
-	 * but don't touch the selection if caller is editor_do_comment_toggle */
-	if (! toggle && sel_start < sel_end)
-	{
-		if (single_line)
-		{
-			sci_set_selection_start(editor->sci, sel_start - co_len);
-			sci_set_selection_end(editor->sci, sel_end - (count * co_len));
-		}
-		else
-		{
-			gint eol_len = editor_get_eol_char_len(editor);
-			sci_set_selection_start(editor->sci, sel_start - co_len - eol_len);
-			sci_set_selection_end(editor->sci, sel_end - co_len - eol_len);
-		}
-	}
+	// WZ-TODO: remove
+	// /* restore selection if there is one
+	//  * but don't touch the selection if caller is editor_do_comment_toggle */
+	// if (! toggle && sel_start < sel_end)
+	// {
+	// 	if (single_line)
+	// 	{
+	// 		sci_set_selection_start(editor->sci, sel_start - co_len);
+	// 		sci_set_selection_end(editor->sci, sel_end - (count * co_len));
+	// 	}
+	// 	else
+	// 	{
+	// 		gint eol_len = editor_get_eol_char_len(editor);
+	// 		sci_set_selection_start(editor->sci, sel_start - co_len - eol_len);
+	// 		sci_set_selection_end(editor->sci, sel_end - co_len - eol_len);
+	// 	}
+	// }
 
 	return count;
 }
@@ -3260,8 +3266,7 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 				b += (gint) co_len - (sel_end - (last_line_start + indent_len));
 			}
 
-			sci_set_selection_start(editor->sci, sel_start + a);
-			sci_set_selection_end(editor->sci, sel_end + b);
+			sci_set_current_selection(editor->sci, sel_start + a, sel_end + b);
 		}
 		else
 			sci_set_current_position(editor->sci, sel_start + a, TRUE);
@@ -3271,13 +3276,11 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 		gint eol_len = editor_get_eol_char_len(editor);
 		if (count_uncommented > 0)
 		{
-			sci_set_selection_start(editor->sci, sel_start - (gint) co_len + eol_len);
-			sci_set_selection_end(editor->sci, sel_end - (gint) co_len + eol_len);
+			sci_set_current_selection(editor->sci, sel_start - (gint) co_len + eol_len, sel_end - (gint) co_len + eol_len);
 		}
 		else if (count_commented > 0)
 		{
-			sci_set_selection_start(editor->sci, sel_start + (gint) co_len - eol_len);
-			sci_set_selection_end(editor->sci, sel_end + (gint) co_len - eol_len);
+			sci_set_current_selection(editor->sci, sel_start + (gint) co_len - eol_len, sel_end + (gint) co_len - eol_len);
 		}
 		if (sel_start >= sel_end)
 			sci_scroll_caret(editor->sci);
@@ -3295,15 +3298,16 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 	gint count = 0;
 	gchar sel[256];
 	const gchar *co, *cc;
+	gchar *co_new;
 	gboolean single_line = FALSE;
 	GeanyFiletype *ft;
 
 	g_return_val_if_fail(editor != NULL && editor->document->file_type != NULL, 0);
 
+	sel_start = sci_get_selection_start(editor->sci);
+	sel_end = sci_get_selection_end(editor->sci);
 	if (line < 0)
 	{	/* use selection or current line */
-		sel_start = sci_get_selection_start(editor->sci);
-		sel_end = sci_get_selection_end(editor->sci);
 
 		first_line = sci_get_line_from_position(editor->sci, sel_start);
 		/* Find the last line with chars selected (not EOL char) */
@@ -3327,6 +3331,8 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 		return 0;
 
 	sci_start_undo_action(editor->sci);
+	
+	co_new = toggle ? g_strconcat(co, editor_prefs.comment_toggle_mark, NULL) : g_strdup(co);
 
 	for (i = first_line; i <= last_line; i++)
 	{
@@ -3356,14 +3362,16 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 				if (ft->comment_use_indent)
 					start = line_start + x;
 
-				if (toggle)
+				sci_set_target_start(editor->sci, start);
+				sci_set_target_end(editor->sci, start);
+				sci_replace_target(editor->sci, co_new, FALSE);
+				if (start == sel_start)
 				{
-					gchar *text = g_strconcat(co, editor_prefs.comment_toggle_mark, NULL);
-					sci_insert_text(editor->sci, start, text);
-					g_free(text);
+					if (sci_get_current_position(editor->sci) == start + strlen(co_new))
+						sci_set_selection(editor->sci, start, sci_get_selection_end(editor->sci));
+					else
+						sci_set_selection(editor->sci, sci_get_selection_end(editor->sci), start);
 				}
-				else
-					sci_insert_text(editor->sci, start, co);
 				count++;
 			}
 			/* use multi line comment */
@@ -3384,24 +3392,28 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 			}
 		}
 	}
+
+	g_free(co_new);
+
 	sci_end_undo_action(editor->sci);
 
-	/* restore selection if there is one
-	 * but don't touch the selection if caller is editor_do_comment_toggle */
-	if (! toggle && sel_start < sel_end)
-	{
-		if (single_line)
-		{
-			sci_set_selection_start(editor->sci, sel_start + co_len);
-			sci_set_selection_end(editor->sci, sel_end + (count * co_len));
-		}
-		else
-		{
-			gint eol_len = editor_get_eol_char_len(editor);
-			sci_set_selection_start(editor->sci, sel_start + co_len + eol_len);
-			sci_set_selection_end(editor->sci, sel_end + co_len + eol_len);
-		}
-	}
+	// WZ-TODO: remove
+	// /* restore selection if there is one
+	//  * but don't touch the selection if caller is editor_do_comment_toggle */
+	// if (! toggle && sel_start < sel_end)
+	// {
+	// 	if (single_line)
+	// 	{
+	// 		sci_set_selection_start(editor->sci, sel_start + co_len);
+	// 		sci_set_selection_end(editor->sci, sel_end + (count * co_len));
+	// 	}
+	// 	else
+	// 	{
+	// 		gint eol_len = editor_get_eol_char_len(editor);
+	// 		sci_set_selection_start(editor->sci, sel_start + co_len + eol_len);
+	// 		sci_set_selection_end(editor->sci, sel_end + co_len + eol_len);
+	// 	}
+	// }
 	return count;
 }
 
@@ -3653,8 +3665,7 @@ void editor_insert_multiline_comment(GeanyEditor *editor)
 	g_free(text);
 
 	/* select the inserted lines for commenting */
-	sci_set_selection_start(editor->sci, pos);
-	sci_set_selection_end(editor->sci, pos + text_len);
+	sci_set_current_selection(editor->sci, pos, pos + text_len);
 
 	editor_do_comment(editor, -1, TRUE, FALSE, FALSE);
 
@@ -3750,7 +3761,7 @@ void editor_select_word(GeanyEditor *editor)
 			return;
 	}
 
-	sci_set_selection(editor->sci, start, end);
+	sci_set_current_selection(editor->sci, start, end);
 }
 
 
@@ -3777,7 +3788,7 @@ void editor_select_lines(GeanyEditor *editor, gboolean extra_line)
 	line = sci_get_line_from_position(editor->sci, end);
 	end = sci_get_position_from_line(editor->sci, line + 1);
 
-	sci_set_selection(editor->sci, start, end);
+	sci_set_current_selection(editor->sci, start, end);
 }
 
 
@@ -3845,7 +3856,7 @@ void editor_select_paragraph(GeanyEditor *editor)
 	line_found = find_paragraph_stop(editor, line_start, GTK_DIR_DOWN);
 	pos_end = SSM(editor->sci, SCI_POSITIONFROMLINE, line_found, 0);
 
-	sci_set_selection(editor->sci, pos_start, pos_end);
+	sci_set_current_selection(editor->sci, pos_start, pos_end);
 }
 
 
@@ -3908,7 +3919,7 @@ void editor_select_indent_block(GeanyEditor *editor)
 	line_found = find_block_stop(editor, line_start, GTK_DIR_DOWN);
 	pos_end = SSM(editor->sci, SCI_POSITIONFROMLINE, line_found, 0);
 
-	sci_set_selection(editor->sci, pos_start, pos_end);
+	sci_set_current_selection(editor->sci, pos_start, pos_end);
 }
 
 
@@ -3933,8 +3944,9 @@ static void smart_line_indentation(GeanyEditor *editor, gint first_line, gint la
 		sel_end = SSM(editor->sci, SCI_GETLINEINDENTPOSITION, i, 0);
 		if (sel_start < sel_end)
 		{
-			sci_set_selection(editor->sci, sel_start, sel_end);
-			sci_replace_sel(editor->sci, "");
+			sci_set_target_start(editor->sci, sel_start);
+			sci_set_target_end(editor->sci, sel_end);
+			sci_replace_target(editor->sci, "", FALSE);
 		}
 		sci_insert_text(editor->sci, sel_start, indent);
 	}
@@ -3975,8 +3987,7 @@ void editor_smart_line_indentation(GeanyEditor *editor)
 	else
 	{
 		/* fully select all the lines affected */
-		sci_set_selection_start(sci, sci_get_position_from_line(sci, first_line));
-		sci_set_selection_end(sci, sci_get_position_from_line(sci, last_line + 1));
+		sci_set_current_selection(sci, sci_get_position_from_line(sci, first_line), sci_get_position_from_line(sci, last_line + 1));
 	}
 
 	sci_end_undo_action(sci);
@@ -4016,8 +4027,9 @@ void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean dec
 
 			if (sci_get_char_at(editor->sci, indentation_end) == ' ')
 			{
-				sci_set_selection(editor->sci, indentation_end, indentation_end + 1);
-				sci_replace_sel(editor->sci, "");
+				sci_set_target_start(editor->sci, indentation_end);
+				sci_set_target_end(editor->sci, indentation_end + 1);
+				sci_replace_target(editor->sci, "", FALSE);
 				count--;
 				if (i == first_line)
 					first_line_offset = -1;
@@ -4032,19 +4044,20 @@ void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean dec
 		}
 	}
 
-	/* set cursor position */
-	if (sel_start < sel_end)
-	{
-		gint start = sel_start + first_line_offset;
-		if (first_line_offset < 0)
-			start = MAX(sel_start + first_line_offset,
-						SSM(editor->sci, SCI_POSITIONFROMLINE, first_line, 0));
-
-		sci_set_selection_start(editor->sci, start);
-		sci_set_selection_end(editor->sci, sel_end + count);
-	}
-	else
-		sci_set_current_position(editor->sci, pos + count, FALSE);
+	// WZ-TODO: remove this
+	// /* set cursor position */
+	// if (sel_start < sel_end)
+	// {
+	// 	gint start = sel_start + first_line_offset;
+	// 	if (first_line_offset < 0)
+	// 		start = MAX(sel_start + first_line_offset,
+	// 					SSM(editor->sci, SCI_POSITIONFROMLINE, first_line, 0));
+	// 
+	// 	sci_set_selection_start(editor->sci, start);
+	// 	sci_set_selection_end(editor->sci, sel_end + count);
+	// }
+	// else
+	// 	sci_set_current_position(editor->sci, pos + count, FALSE);
 
 	sci_end_undo_action(editor->sci);
 }
@@ -4256,10 +4269,7 @@ void editor_insert_color(GeanyEditor *editor, const gchar *colour)
 		{
 			gint end = sci_get_selection_end(editor->sci);
 
-			sci_set_selection_start(editor->sci, start + 2);
-			/* we need to also re-set the selection end in case the anchor was located before
-			 * the cursor, since set_selection_start() always moves the cursor, not the anchor */
-			sci_set_selection_end(editor->sci, end);
+			sci_set_current_selection(editor->sci, start + 2, end >= start + 2 ? end : start + 2);
 			replacement++; /* skip the leading "0x" */
 		}
 		else if (sci_get_char_at(editor->sci, start - 1) == '#')
@@ -4450,7 +4460,7 @@ void editor_replace_tabs(GeanyEditor *editor, gboolean ignore_selection)
 		if (caret_pos > search_pos)
 			caret_pos += current_tab_true_length - 1;
 	}
-	sci_set_selection(editor->sci, anchor_pos, caret_pos);
+	sci_set_current_selection(editor->sci, anchor_pos, caret_pos);
 	sci_end_undo_action(editor->sci);
 }
 
@@ -4520,7 +4530,7 @@ void editor_replace_spaces(GeanyEditor *editor, gboolean ignore_selection)
 		if (caret_pos > search_pos)
 			caret_pos -= tab_len - 1;
 	}
-	sci_set_selection(editor->sci, anchor_pos, caret_pos);
+	sci_set_current_selection(editor->sci, anchor_pos, caret_pos);
 	sci_end_undo_action(editor->sci);
 	g_free(text);
 }
@@ -5240,8 +5250,9 @@ static void change_tab_indentation(GeanyEditor *editor, gint line, gboolean incr
 	{
 		if (sci_get_char_at(sci, pos) == '\t')
 		{
-			sci_set_selection(sci, pos, pos + 1);
-			sci_replace_sel(sci, "");
+			sci_set_target_start(sci, pos);
+			sci_set_target_end(sci, pos + 1);
+			sci_replace_target(sci, "", FALSE);
 		}
 		else /* remove spaces only if no tabs */
 		{

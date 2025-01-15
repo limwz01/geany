@@ -2281,8 +2281,7 @@ gboolean document_search_bar_find(GeanyDocument *doc, const gchar *text, gboolea
 		/* unfold maybe folded results */
 		sci_ensure_line_is_visible(doc->editor->sci, line);
 
-		sci_set_selection_start(doc->editor->sci, ttf.chrgText.cpMin);
-		sci_set_selection_end(doc->editor->sci, ttf.chrgText.cpMax);
+		sci_set_current_selection(doc->editor->sci, ttf.chrgText.cpMin, ttf.chrgText.cpMax);
 
 		if (! editor_line_in_view(doc->editor, line))
 		{	/* we need to force scrolling in case the cursor is outside of the current visible area
@@ -2475,8 +2474,7 @@ gint document_replace_text(GeanyDocument *doc, const gchar *find_text, const gch
 	{
 		gint replace_len = search_replace_match(doc->editor->sci, match, replace_text);
 		/* select the replacement - find text will skip past the selected text */
-		sci_set_selection_start(doc->editor->sci, search_pos);
-		sci_set_selection_end(doc->editor->sci, search_pos + replace_len);
+		sci_set_current_selection(doc->editor->sci, search_pos, search_pos + replace_len);
 		geany_match_info_free(match);
 	}
 	else
@@ -2635,16 +2633,14 @@ void document_replace_sel(GeanyDocument *doc, const gchar *find_text, const gcha
 			{	/* for keeping and adjusting the selection in multi line rectangle selection we
 				 * need the last line of the original selection and the greatest column number after
 				 * replacing and set the selection end to the last line at the greatest column */
-				sci_set_selection_start(doc->editor->sci, selection_start);
-				sci_set_selection_end(doc->editor->sci,
+				sci_set_current_selection(doc->editor->sci, selection_start,
 					sci_get_position_from_line(doc->editor->sci, last_line) + max_column);
 				sci_set_selection_mode(doc->editor->sci, selection_mode);
 			}
 		}
 		else
 		{
-			sci_set_selection_start(doc->editor->sci, selection_start);
-			sci_set_selection_end(doc->editor->sci, selection_end);
+			sci_set_current_selection(doc->editor->sci, selection_start, selection_end);
 		}
 	}
 	else /* no replacements */

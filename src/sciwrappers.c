@@ -591,7 +591,6 @@ GEANY_API_SYMBOL
 void sci_set_selection_start(ScintillaObject *sci, gint position)
 {
 	SSM(sci, SCI_SETSELECTIONSTART, (uptr_t) position, 0);
-	SSM(sci, SCI_CHOOSECARETX, 0, 0);
 }
 
 
@@ -602,11 +601,20 @@ GEANY_API_SYMBOL
 void sci_set_selection_end(ScintillaObject *sci, gint position)
 {
 	SSM(sci, SCI_SETSELECTIONEND, (uptr_t) position, 0);
-	SSM(sci, SCI_CHOOSECARETX, 0, 0);
 }
 
 
 void sci_set_selection(ScintillaObject *sci, gint anchorPos, gint currentPos)
+{
+	SSM(sci, SCI_SETSEL, (uptr_t) anchorPos, currentPos);
+}
+
+
+/** Sets the current selection and update last X position.
+ * @param sci Scintilla widget.
+ * @param anchorPos Selection anchor position.
+ * @param currentPos Selection current position. */
+void sci_set_current_selection(ScintillaObject *sci, gint anchorPos, gint currentPos)
 {
 	SSM(sci, SCI_SETSEL, (uptr_t) anchorPos, currentPos);
 	SSM(sci, SCI_CHOOSECARETX, 0, 0);

@@ -2081,7 +2081,7 @@ gint search_find_next(ScintillaObject *sci, const gchar *str, GeanyFindFlags fla
 	if (ret == pos && match->matches[0].start == match->matches[0].end)
 		ret = find_regex(sci, pos + 1, regex, flags & GEANY_FIND_MULTILINE, match);
 	if (ret >= 0)
-		sci_set_selection(sci, match->start, match->end);
+		sci_set_current_selection(sci, match->start, match->end);
 
 	if (ret != -1 && match_)
 		*match_ = match;

@@ -2200,24 +2200,32 @@ static gboolean cb_func_editor_action(guint key_id)
 
 static void join_lines(GeanyEditor *editor)
 {
-	gint start, end, i;
+	gint start, end, start_line, end_line, i;
 
-	start = sci_get_line_from_position(editor->sci,
-		sci_get_selection_start(editor->sci));
-	end = sci_get_line_from_position(editor->sci,
-		sci_get_selection_end(editor->sci));
+	start = sci_get_selection_start(editor->sci);
+	end = sci_get_selection_end(editor->sci);
+	start_line = sci_get_line_from_position(editor->sci, start);
+	end_line = sci_get_line_from_position(editor->sci, end);
+	if (sci_get_col_from_position(editor->sci, end) == 0)
+	{
+		end_line--;
+		end = sci_get_line_end_position(editor->sci, end_line);
+	}
+
+	if (start_line >= end_line)
+		return;
 
 	/* remove spaces surrounding the lines so that these spaces
 	 * won't appear within text after joining */
-	for (i = start; i < end; i++)
+	for (i = start_line; i < end_line; i++)
 		editor_strip_line_trailing_spaces(editor, i);
-	for (i = start + 1; i <= end; i++)
+	for (i = start_line + 1; i <= end_line; i++)
 		sci_set_line_indentation(editor->sci, i, 0);
 
 	sci_set_target_start(editor->sci,
-		sci_get_position_from_line(editor->sci, start));
+		sci_get_position_from_line(editor->sci, start_line));
 	sci_set_target_end(editor->sci,
-		sci_get_position_from_line(editor->sci, end));
+		sci_get_position_from_line(editor->sci, end_line));
 	sci_lines_join(editor->sci);
 }
 
@@ -2301,9 +2309,7 @@ static void reflow_lines(GeanyEditor *editor, gint column)
 	start = sci_get_line_from_position(editor->sci,
 		sci_get_selection_start(editor->sci));
 
-	/* if several lines are selected, join them. */
-	if (sci_get_lines_selected(editor->sci) > 1)
-		join_lines(editor);
+	join_lines(editor);
 
 	/* if this line is short enough, do nothing */
 	if (column > sci_get_line_end_position(editor->sci, start) -
@@ -2343,19 +2349,20 @@ static void reflow_lines(GeanyEditor *editor, gint column)
 }
 
 
-/* deselect last newline of selection, if any */
-static void sci_deselect_last_newline(ScintillaObject *sci)
-{
-	gint start, end;
-
-	start = sci_get_selection_start(sci);
-	end = sci_get_selection_end(sci);
-	if (end > start && sci_get_col_from_position(sci, end) == 0)
-	{
-		end = sci_get_line_end_position(sci, sci_get_line_from_position(sci, end - 1));
-		sci_set_selection(sci, start, end);
-	}
-}
+// WZ-TODO: remove
+// /* deselect last newline of selection, if any */
+// static void sci_deselect_last_newline(ScintillaObject *sci)
+// {
+// 	gint start, end;
+// 
+// 	start = sci_get_selection_start(sci);
+// 	end = sci_get_selection_end(sci);
+// 	if (end > start && sci_get_col_from_position(sci, end) == 0)
+// 	{
+// 		end = sci_get_line_end_position(sci, sci_get_line_from_position(sci, end - 1));
+// 		sci_set_selection(sci, start, end);
+// 	}
+// }
 
 
 static void reflow_paragraph(GeanyEditor *editor)
@@ -2375,7 +2382,6 @@ static void reflow_paragraph(GeanyEditor *editor)
 	sel = sci_has_selection(sci);
 	if (!sel)
 		editor_select_indent_block(editor);
-	sci_deselect_last_newline(sci);
 	reflow_lines(editor, column);
 	if (!sel)
 		sci_set_anchor(sci, -1);
@@ -2394,7 +2400,6 @@ static void join_paragraph(GeanyEditor *editor)
 	sel = sci_has_selection(sci);
 	if (!sel)
 		editor_select_indent_block(editor);
-	sci_deselect_last_newline(sci);
 	join_lines(editor);
 	if (!sel)
 		sci_set_anchor(sci, -1);

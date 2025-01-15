@@ -721,7 +721,7 @@ void on_toggle_case1_activate(GtkMenuItem *menuitem, gpointer user_data)
 			sci_replace_sel(sci, result);
 			g_free(result);
 			if (keep_sel)
-				sci_set_selection_start(sci, sci_get_current_position(sci) - strlen(text));
+				sci_set_current_selection(sci, sci_get_current_position(sci) - strlen(text), sci_get_current_position(sci));
 		}
 		else
 			sci_send_command(sci, cmd);
