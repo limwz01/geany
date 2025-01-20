@@ -3016,9 +3016,8 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 		first_line = sci_get_line_from_position(editor->sci, sel_start);
 		last_line = sci_get_line_from_position(editor->sci, sel_end);
 		/* Find the last line with chars selected (not EOL char) */
-		if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+		if (sci_is_at_line_start(editor->sci, sel_end) && last_line > first_line)
 			last_line--;
-		last_line = MAX(first_line, last_line);
 	}
 	else
 	{
@@ -3123,9 +3122,8 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 	first_line = sci_get_line_from_position(editor->sci, sel_start);
 	last_line = sci_get_line_from_position(editor->sci, sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+	if (sci_is_at_line_start(editor->sci, sel_end) && last_line > first_line)
 		last_line--;
-	last_line = MAX(first_line, last_line);
 	saved_line_start = -1;
 
 	ft = editor_get_filetype_at_line(editor, first_line);
@@ -3226,9 +3224,8 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 		first_line = sci_get_line_from_position(editor->sci, sel_start);
 		last_line = sci_get_line_from_position(editor->sci, sel_end);
 		/* Find the last line with chars selected (not EOL char) */
-		if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+		if (sci_is_at_line_start(editor->sci, sel_end) && last_line > first_line)
 			last_line--;
-		last_line = MAX(first_line, last_line);
 	}
 	else
 	{
@@ -3727,9 +3724,9 @@ void editor_select_lines(GeanyEditor *editor, gboolean extra_line)
 	end = sci_get_selection_end(editor->sci);
 
 	/* check if whole lines are already selected */
-	if (! extra_line && start != end &&
-		sci_get_col_from_position(editor->sci, start) == 0 &&
-		sci_get_col_from_position(editor->sci, end) == 0)
+	if (!extra_line && start != end &&
+		sci_is_at_line_start(editor->sci, start) &&
+		sci_is_at_line_start(editor->sci, end))
 			return;
 
 	line = sci_get_line_from_position(editor->sci, start);
@@ -3920,9 +3917,8 @@ void editor_smart_line_indentation(GeanyEditor *editor)
 	first_line = sci_get_line_from_position(sci, first_sel_start);
 	last_line = sci_get_line_from_position(editor->sci, first_sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	if (sci_get_col_from_position(editor->sci, first_sel_end) == 0)
+	if (sci_is_at_line_start(editor->sci, first_sel_end) && last_line > first_line)
 		last_line--;
-	last_line = MAX(first_line, last_line);
 
 	sci_start_undo_action(sci);
 
@@ -3960,9 +3956,8 @@ void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean dec
 	first_line = sci_get_line_from_position(editor->sci, sel_start);
 	last_line = sci_get_line_from_position(editor->sci, sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+	if (sci_is_at_line_start(editor->sci, sel_end) && last_line > first_line)
 		last_line--;
-	last_line = MAX(first_line, last_line);
 
 	if (pos == -1)
 		pos = sel_start;
@@ -4508,7 +4503,7 @@ void editor_strip_trailing_spaces(GeanyEditor *editor, gboolean ignore_selection
 		start_line = sci_get_line_from_position(editor->sci, selection_start);
 		end_line = sci_get_line_from_position(editor->sci, selection_end);
 
-		if (sci_get_col_from_position(editor->sci, selection_end) > 0)
+		if (!sci_is_at_line_start(editor->sci, selection_end))
 			end_line++;
 	}
 	else
@@ -5237,7 +5232,7 @@ void editor_indent(GeanyEditor *editor, gboolean increase)
 	first_line = sci_get_line_from_position(sci, sel_start);
 	last_line = sci_get_line_from_position(sci, sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	if (sci_get_col_from_position(sci, sel_end) == 0)
+	if (sci_is_at_line_start(sci, sel_end))
 		last_line--;
 
 	if (sci_get_lines_selected(sci) <= 1)

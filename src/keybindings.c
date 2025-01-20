@@ -2206,11 +2206,8 @@ static void join_lines(GeanyEditor *editor)
 	end = sci_get_selection_end(editor->sci);
 	start_line = sci_get_line_from_position(editor->sci, start);
 	end_line = sci_get_line_from_position(editor->sci, end);
-	if (sci_get_col_from_position(editor->sci, end) == 0)
-	{
+	if (sci_is_at_line_start(editor->sci, end))
 		end_line--;
-		end = sci_get_line_end_position(editor->sci, end_line);
-	}
 
 	if (start_line >= end_line)
 		return;

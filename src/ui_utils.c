@@ -227,15 +227,14 @@ static gchar *create_statusbar_statistics(GeanyDocument *doc,
 			case 's':
 			{
 				gint len = sci_get_selected_text_length2(sci);
-				/* check if whole lines are selected */
-				if (!len || sci_get_col_from_position(sci,
-						sci_get_selection_start(sci)) != 0 ||
-					sci_get_col_from_position(sci,
-						sci_get_selection_end(sci)) != 0)
-					g_string_append_printf(stats_str, "%d", len);
-				else /* L = lines */
-					g_string_append_printf(stats_str, _("%dL"),
-						sci_get_lines_selected(doc->editor->sci) - 1);
+				gint sel_start = sci_get_selection_start(sci);
+				gint sel_end = sci_get_selection_end(sci);
+				gint first_line = sci_get_line_from_position(sci, sel_start);
+				gint last_line = sci_get_line_from_position(sci, sel_end);
+				/* Find the last line with chars selected (not EOL char) */
+				if (sci_is_at_line_start(sci, sel_end) && last_line > first_line)
+					last_line--;
+				g_string_append_printf(stats_str, "%d..%d (%d, %d)", sel_start, sel_end, sel_end - sel_start, last_line - first_line + 1);
 				break;
 			}
 			case 'n' :

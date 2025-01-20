@@ -498,6 +498,16 @@ gint sci_get_line_from_position(ScintillaObject *sci, gint position)
 }
 
 
+/** Gets the line number from @a position.
+ * @param sci Scintilla widget.
+ * @param position Position.
+ * @return The line. */
+gint sci_is_at_line_start(ScintillaObject *sci, gint position)
+{
+	return sci_get_position_from_line(sci, sci_get_line_from_position(sci, position)) == position;
+}
+
+
 /** Gets the column number relative to the start of the line that @a position is on.
  * @param sci Scintilla widget.
  * @param position Position.

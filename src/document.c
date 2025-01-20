@@ -2582,9 +2582,10 @@ void document_replace_sel(GeanyDocument *doc, const gchar *find_text, const gcha
 
 		first_line = sci_get_line_from_position(doc->editor->sci, selection_start);
 		/* Find the last line with chars selected (not EOL char) */
-		last_line = sci_get_line_from_position(doc->editor->sci,
-			selection_end - editor_get_eol_char_len(doc->editor));
-		last_line = MAX(first_line, last_line);
+		last_line = sci_get_line_from_position(doc->editor->sci, selection_end);
+		/* Find the last line with chars selected (not EOL char) */
+		if (sci_is_at_line_start(doc->editor->sci, selection_end) && last_line > first_line)
+			last_line--;
 		for (line = first_line; line < (first_line + selected_lines); line++)
 		{
 			gint line_start = sci_get_pos_at_line_sel_start(doc->editor->sci, line);
