@@ -3004,7 +3004,6 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 	gsize co_len;
 	gchar sel[256];
 	const gchar *co, *cc;
-	gboolean single_line = FALSE;
 	GeanyFiletype *ft;
 
 	g_return_val_if_fail(editor != NULL && editor->document->file_type != NULL, 0);
@@ -3015,9 +3014,10 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 		sel_end = sci_get_selection_end(editor->sci);
 
 		first_line = sci_get_line_from_position(editor->sci, sel_start);
+		last_line = sci_get_line_from_position(editor->sci, sel_end);
 		/* Find the last line with chars selected (not EOL char) */
-		last_line = sci_get_line_from_position(editor->sci,
-			sel_end - editor_get_eol_char_len(editor));
+		if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+			last_line--;
 		last_line = MAX(first_line, last_line);
 	}
 	else
@@ -3034,6 +3034,10 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 	co_len = strlen(co);
 	if (co_len == 0)
 		return 0;
+	gsize tm_len = 0;
+	if (toggle)
+		tm_len = strlen(editor_prefs.comment_toggle_mark);
+	gsize co_new_len = co_len + tm_len;
 
 	sci_start_undo_action(editor->sci);
 
@@ -3059,16 +3063,11 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 			/* use single line comment */
 			if (EMPTY(cc))
 			{
-				single_line = TRUE;
-
 				if (toggle)
 				{
-					gsize tm_len = strlen(editor_prefs.comment_toggle_mark);
 					if (strncmp(sel + x, co, co_len) != 0 ||
 						strncmp(sel + x + co_len, editor_prefs.comment_toggle_mark, tm_len) != 0)
 						continue;
-
-					co_len += tm_len;
 				}
 				else
 				{
@@ -3077,7 +3076,7 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 				}
 
 				sci_set_target_start(editor->sci, line_start + x);
-				sci_set_target_end(editor->sci, line_start + x + co_len);
+				sci_set_target_end(editor->sci, line_start + x + co_new_len);
 				sci_replace_target(editor->sci, "", FALSE);
 				count++;
 			}
@@ -3101,24 +3100,6 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 	}
 	sci_end_undo_action(editor->sci);
 
-	// WZ-TODO: remove
-	// /* restore selection if there is one
-	//  * but don't touch the selection if caller is editor_do_comment_toggle */
-	// if (! toggle && sel_start < sel_end)
-	// {
-	// 	if (single_line)
-	// 	{
-	// 		sci_set_selection_start(editor->sci, sel_start - co_len);
-	// 		sci_set_selection_end(editor->sci, sel_end - (count * co_len));
-	// 	}
-	// 	else
-	// 	{
-	// 		gint eol_len = editor_get_eol_char_len(editor);
-	// 		sci_set_selection_start(editor->sci, sel_start - co_len - eol_len);
-	// 		sci_set_selection_end(editor->sci, sel_end - co_len - eol_len);
-	// 	}
-	// }
-
 	return count;
 }
 
@@ -3126,14 +3107,10 @@ gint editor_do_uncomment(GeanyEditor *editor, gint line, gboolean toggle)
 void editor_do_comment_toggle(GeanyEditor *editor)
 {
 	gint first_line, last_line;
-	gint x, i, line_start, line_len, first_line_start, last_line_start;
+	gint x, i, line_start, line_len, saved_line_start;
 	gint sel_start, sel_end;
-	gint count_commented = 0, count_uncommented = 0;
 	gchar sel[256];
 	const gchar *co, *cc;
-	gboolean single_line = FALSE;
-	gboolean first_line_was_comment = FALSE;
-	gboolean last_line_was_comment = FALSE;
 	gsize co_len;
 	gsize tm_len = strlen(editor_prefs.comment_toggle_mark);
 	GeanyFiletype *ft;
@@ -3144,13 +3121,12 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 	sel_end = sci_get_selection_end(editor->sci);
 
 	first_line = sci_get_line_from_position(editor->sci, sel_start);
+	last_line = sci_get_line_from_position(editor->sci, sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	last_line = sci_get_line_from_position(editor->sci,
-		sel_end - editor_get_eol_char_len(editor));
+	if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+		last_line--;
 	last_line = MAX(first_line, last_line);
-
-	first_line_start = sci_get_position_from_line(editor->sci, first_line);
-	last_line_start = sci_get_position_from_line(editor->sci, last_line);
+	saved_line_start = -1;
 
 	ft = editor_get_filetype_at_line(editor, first_line);
 
@@ -3163,6 +3139,7 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 
 	sci_start_undo_action(editor->sci);
 
+	gboolean to_comment = FALSE;
 	for (i = first_line; i <= last_line; i++)
 	{
 		gint buf_len;
@@ -3179,112 +3156,48 @@ void editor_do_comment_toggle(GeanyEditor *editor)
 
 		while (isspace(sel[x])) x++;
 
-		/* use single line comment */
-		if (EMPTY(cc))
+		gboolean is_non_empty_line = x >= buf_len - 1 || sel[x] != '\0';
+		if (is_non_empty_line)
 		{
-			gboolean do_continue = FALSE;
-			single_line = TRUE;
-
-			if (strncmp(sel + x, co, co_len) == 0 &&
-				strncmp(sel + x + co_len, editor_prefs.comment_toggle_mark, tm_len) == 0)
+			saved_line_start = line_start;
+			/* use single line comment */
+			if (EMPTY(cc))
 			{
-				do_continue = TRUE;
+				if (!(strncmp(sel + x, co, co_len) == 0 &&
+					strncmp(sel + x + co_len, editor_prefs.comment_toggle_mark, tm_len) == 0))
+					to_comment = TRUE;
 			}
-
-			if (do_continue && i == first_line)
-				first_line_was_comment = TRUE;
-			last_line_was_comment = do_continue;
-
-			if (do_continue)
-			{
-				count_uncommented += editor_do_uncomment(editor, i, TRUE);
-				continue;
-			}
-
-			/* we are still here, so the above lines were not already comments, so comment it */
-			count_commented += editor_do_comment(editor, i, FALSE, TRUE, TRUE);
-		}
-		/* use multi line comment */
-		else
-		{
-			gint style_comment;
-
-			/* skip lines which are already comments */
-			style_comment = get_multiline_comment_style(editor, line_start);
-			if (sci_get_style_at(editor->sci, line_start + x) == style_comment)
-			{
-				if (real_uncomment_multiline(editor))
-					count_uncommented++;
-			}
+			/* use multi line comment */
 			else
 			{
-				real_comment_multiline(editor, line_start, last_line);
-				count_commented++;
-			}
+				gint style_comment;
 
-			/* break because we are already on the last line */
-			break;
+				/* check if it is a multiline comment */
+				style_comment = get_multiline_comment_style(editor, line_start);
+				if (sci_get_style_at(editor->sci, line_start + x) != style_comment)
+					to_comment = TRUE;
+				break;
+			}
 		}
 	}
 
-	sci_end_undo_action(editor->sci);
-
-	co_len += tm_len;
-
-	/* restore selection or caret position */
-	if (single_line)
+	/* use single line comment */
+	if (EMPTY(cc))
 	{
-		gint a = (first_line_was_comment) ? - (gint) co_len : (gint) co_len;
-		gint indent_len;
-
-		/* don't modify sel_start when the selection starts within indentation */
-		read_indent(editor, sel_start);
-		indent_len = (gint) strlen(indent);
-		if ((sel_start - first_line_start) <= indent_len)
-			a = 0;
-		/* if the selection start was inside the comment mark, adjust the position */
-		else if (first_line_was_comment &&
-				 sel_start >= (first_line_start + indent_len) &&
-				 sel_start <= (first_line_start + indent_len + (gint) co_len))
-		{
-			a = (first_line_start + indent_len) - sel_start;
-		}
-
-		if (sel_start < sel_end)
-		{
-			gint b = (count_commented * (gint) co_len) - (count_uncommented * (gint) co_len);
-
-			/* same for selection end, but here we add an offset on the offset above */
-			read_indent(editor, sel_end + b);
-			indent_len = (gint) strlen(indent);
-			if ((sel_end - last_line_start) < indent_len)
-				b += last_line_was_comment ? (gint) co_len : -(gint) co_len;
-			else if (last_line_was_comment &&
-					 sel_end >= (last_line_start + indent_len) &&
-					 sel_end <= (last_line_start + indent_len + (gint) co_len))
-			{
-				b += (gint) co_len - (sel_end - (last_line_start + indent_len));
-			}
-
-			sci_set_current_selection(editor->sci, sel_start + a, sel_end + b);
-		}
+		if (to_comment)
+			editor_do_comment(editor, -1, FALSE, TRUE, TRUE);
 		else
-			sci_set_current_position(editor->sci, sel_start + a, TRUE);
+			editor_do_uncomment(editor, -1, TRUE);
 	}
 	else
 	{
-		gint eol_len = editor_get_eol_char_len(editor);
-		if (count_uncommented > 0)
-		{
-			sci_set_current_selection(editor->sci, sel_start - (gint) co_len + eol_len, sel_end - (gint) co_len + eol_len);
-		}
-		else if (count_commented > 0)
-		{
-			sci_set_current_selection(editor->sci, sel_start + (gint) co_len - eol_len, sel_end + (gint) co_len - eol_len);
-		}
-		if (sel_start >= sel_end)
-			sci_scroll_caret(editor->sci);
+		if (to_comment && saved_line_start >= 0)
+			real_comment_multiline(editor, saved_line_start, last_line);
+		else
+			real_uncomment_multiline(editor);
 	}
+	sci_end_undo_action(editor->sci);
+
 }
 
 
@@ -3293,13 +3206,14 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 		gboolean single_comment)
 {
 	gint first_line, last_line;
-	gint x, i, line_start, line_len;
+	gint x, i, line_start, line_len, ws_len;
 	gint sel_start, sel_end, co_len;
 	gint count = 0;
-	gchar sel[256];
+	const gint max_sel = 256;
+	gchar sel[max_sel], sel_ws[max_sel];
+	gboolean is_first_non_empty = TRUE;
 	const gchar *co, *cc;
 	gchar *co_new;
-	gboolean single_line = FALSE;
 	GeanyFiletype *ft;
 
 	g_return_val_if_fail(editor != NULL && editor->document->file_type != NULL, 0);
@@ -3310,15 +3224,15 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 	{	/* use selection or current line */
 
 		first_line = sci_get_line_from_position(editor->sci, sel_start);
+		last_line = sci_get_line_from_position(editor->sci, sel_end);
 		/* Find the last line with chars selected (not EOL char) */
-		last_line = sci_get_line_from_position(editor->sci,
-			sel_end - editor_get_eol_char_len(editor));
+		if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+			last_line--;
 		last_line = MAX(first_line, last_line);
 	}
 	else
 	{
 		first_line = last_line = line;
-		sel_start = sel_end = sci_get_position_from_line(editor->sci, line);
 	}
 
 	ft = editor_get_filetype_at_line(editor, first_line);
@@ -3334,6 +3248,43 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 	
 	co_new = toggle ? g_strconcat(co, editor_prefs.comment_toggle_mark, NULL) : g_strdup(co);
 
+	sel_ws[0] = '\0';
+	ws_len = 0;
+
+	for (i = first_line; i <= last_line; i++)
+	{
+		gint buf_len;
+
+		line_start = sci_get_position_from_line(editor->sci, i);
+		line_len = sci_get_line_end_position(editor->sci, i) - line_start;
+		x = 0;
+
+		buf_len = MIN(max_sel - 1, line_len);
+		if (buf_len < 0)
+			continue;
+		sci_get_text_range(editor->sci, line_start, line_start + buf_len, sel);
+		sel[buf_len] = '\0';
+
+		while (isspace(sel[x])) x++;
+
+		gboolean is_non_empty_line = x >= buf_len - 1 || sel[x] != '\0';
+		if (is_non_empty_line)
+		{
+			if (is_first_non_empty)
+			{
+				ws_len = MAX(0, MIN(max_sel - 1 - strlen(co_new), x));
+				g_strlcpy(sel_ws, sel, ws_len + 1);
+				is_first_non_empty = FALSE;
+			}
+			else
+			{
+				for (ws_len = 0; sel_ws[ws_len] != 0 && sel[ws_len] == sel_ws[ws_len]; ws_len++);
+				sel_ws[ws_len] = '\0';
+			}
+		}
+
+	}
+
 	for (i = first_line; i <= last_line; i++)
 	{
 		gint buf_len;
@@ -3349,28 +3300,43 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 		sel[buf_len] = '\0';
 
 		while (isspace(sel[x])) x++;
+		gboolean is_non_empty_line = x >= buf_len - 1 || sel[x] != '\0';
 
 		/* to skip blank lines */
-		if (allow_empty_lines || (x < line_len && sel[x] != '\0'))
+		if (allow_empty_lines || is_non_empty_line)
 		{
 			/* use single line comment */
 			if (EMPTY(cc))
 			{
 				gint start = line_start;
-				single_line = TRUE;
 
+				gboolean sel_adj = start == sel_start;
+				gboolean sel_rvs = sci_get_current_position(editor->sci) == sel_start;
 				if (ft->comment_use_indent)
-					start = line_start + x;
+				{
+					if (!is_non_empty_line && strncmp(sel, sel_ws, ws_len) != 0)
+					{
+						sel_adj = sel_start >= start && sel_start <= start + MIN(x, ws_len);
+						sci_set_target_start(editor->sci, start);
+						sci_set_target_end(editor->sci, start + MIN(x, ws_len));
+						sci_replace_target(editor->sci, sel_ws, FALSE);
+					}
+					else
+					{
+						sel_adj = start + ws_len == sel_start;
+					}
+					start += ws_len;
+				}
 
 				sci_set_target_start(editor->sci, start);
 				sci_set_target_end(editor->sci, start);
 				sci_replace_target(editor->sci, co_new, FALSE);
-				if (start == sel_start)
+				if (sel_adj)
 				{
-					if (sci_get_current_position(editor->sci) == start + strlen(co_new))
-						sci_set_selection(editor->sci, start, sci_get_selection_end(editor->sci));
+					if (sel_rvs)
+						sci_set_selection(editor->sci, sci_get_selection_end(editor->sci), sel_start);
 					else
-						sci_set_selection(editor->sci, sci_get_selection_end(editor->sci), start);
+						sci_set_selection(editor->sci, sel_start, sci_get_selection_end(editor->sci));
 				}
 				count++;
 			}
@@ -3394,26 +3360,10 @@ gint editor_do_comment(GeanyEditor *editor, gint line, gboolean allow_empty_line
 	}
 
 	g_free(co_new);
+	SSM(editor->sci, SCI_CHOOSECARETX, 0, 0);
 
 	sci_end_undo_action(editor->sci);
 
-	// WZ-TODO: remove
-	// /* restore selection if there is one
-	//  * but don't touch the selection if caller is editor_do_comment_toggle */
-	// if (! toggle && sel_start < sel_end)
-	// {
-	// 	if (single_line)
-	// 	{
-	// 		sci_set_selection_start(editor->sci, sel_start + co_len);
-	// 		sci_set_selection_end(editor->sci, sel_end + (count * co_len));
-	// 	}
-	// 	else
-	// 	{
-	// 		gint eol_len = editor_get_eol_char_len(editor);
-	// 		sci_set_selection_start(editor->sci, sel_start + co_len + eol_len);
-	// 		sci_set_selection_end(editor->sci, sel_end + co_len + eol_len);
-	// 	}
-	// }
 	return count;
 }
 
@@ -3968,8 +3918,10 @@ void editor_smart_line_indentation(GeanyEditor *editor)
 	first_sel_end = sci_get_selection_end(sci);
 
 	first_line = sci_get_line_from_position(sci, first_sel_start);
+	last_line = sci_get_line_from_position(editor->sci, first_sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	last_line = sci_get_line_from_position(sci, first_sel_end - editor_get_eol_char_len(editor));
+	if (sci_get_col_from_position(editor->sci, first_sel_end) == 0)
+		last_line--;
 	last_line = MAX(first_line, last_line);
 
 	sci_start_undo_action(sci);
@@ -3997,7 +3949,7 @@ void editor_smart_line_indentation(GeanyEditor *editor)
 /* increase / decrease current line or selection by one space */
 void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean decrease)
 {
-	gint i, first_line, last_line, line_start, indentation_end, count = 0;
+	gint i, first_line, last_line, line_start, indentation_end;
 	gint sel_start, sel_end, first_line_offset = 0;
 
 	g_return_if_fail(editor != NULL);
@@ -4006,8 +3958,10 @@ void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean dec
 	sel_end = sci_get_selection_end(editor->sci);
 
 	first_line = sci_get_line_from_position(editor->sci, sel_start);
+	last_line = sci_get_line_from_position(editor->sci, sel_end);
 	/* Find the last line with chars selected (not EOL char) */
-	last_line = sci_get_line_from_position(editor->sci, sel_end - editor_get_eol_char_len(editor));
+	if (sci_get_col_from_position(editor->sci, sel_end) == 0)
+		last_line--;
 	last_line = MAX(first_line, last_line);
 
 	if (pos == -1)
@@ -4030,34 +3984,13 @@ void editor_indentation_by_one_space(GeanyEditor *editor, gint pos, gboolean dec
 				sci_set_target_start(editor->sci, indentation_end);
 				sci_set_target_end(editor->sci, indentation_end + 1);
 				sci_replace_target(editor->sci, "", FALSE);
-				count--;
-				if (i == first_line)
-					first_line_offset = -1;
 			}
 		}
 		else
 		{
 			sci_insert_text(editor->sci, indentation_end, " ");
-			count++;
-			if (i == first_line)
-				first_line_offset = 1;
 		}
 	}
-
-	// WZ-TODO: remove this
-	// /* set cursor position */
-	// if (sel_start < sel_end)
-	// {
-	// 	gint start = sel_start + first_line_offset;
-	// 	if (first_line_offset < 0)
-	// 		start = MAX(sel_start + first_line_offset,
-	// 					SSM(editor->sci, SCI_POSITIONFROMLINE, first_line, 0));
-	// 
-	// 	sci_set_selection_start(editor->sci, start);
-	// 	sci_set_selection_end(editor->sci, sel_end + count);
-	// }
-	// else
-	// 	sci_set_current_position(editor->sci, pos + count, FALSE);
 
 	sci_end_undo_action(editor->sci);
 }
@@ -5285,20 +5218,27 @@ static void editor_change_line_indent(GeanyEditor *editor, gint line, gboolean i
 void editor_indent(GeanyEditor *editor, gboolean increase)
 {
 	ScintillaObject *sci = editor->sci;
-	gint caret_pos, caret_line, caret_offset, caret_indent_pos, caret_line_len;
-	gint anchor_pos, anchor_line, anchor_offset, anchor_indent_pos, anchor_line_len;
+	gint sel_start, sel_end;
+
+	sel_start = sci_get_selection_start(sci);
+	sel_end = sci_get_selection_end(sci);
 
 	/* backup information needed to restore caret and anchor */
-	caret_pos = sci_get_current_position(sci);
-	anchor_pos = SSM(sci, SCI_GETANCHOR, 0, 0);
-	caret_line = sci_get_line_from_position(sci, caret_pos);
-	anchor_line = sci_get_line_from_position(sci, anchor_pos);
-	caret_offset = caret_pos - sci_get_position_from_line(sci, caret_line);
-	anchor_offset = anchor_pos - sci_get_position_from_line(sci, anchor_line);
-	caret_indent_pos = sci_get_line_indent_position(sci, caret_line);
-	anchor_indent_pos = sci_get_line_indent_position(sci, anchor_line);
-	caret_line_len = sci_get_line_length(sci, caret_line);
-	anchor_line_len = sci_get_line_length(sci, anchor_line);
+	gint caret_pos = sci_get_current_position(sci);
+	gint start_col = sci_get_col_from_position(sci, sel_start);
+	gint start_line = sci_get_line_from_position(sci, sel_start);
+	gint start_indent = sci_get_line_indentation(sci, start_line);
+	gint end_col = sci_get_col_from_position(sci, sel_end);
+	gint end_line = sci_get_line_from_position(sci, sel_end);
+	gint end_indent = sci_get_line_indentation(sci, end_line);
+
+	gint line, first_line, last_line;
+	gint first_line_start, last_line_start;
+	first_line = sci_get_line_from_position(sci, sel_start);
+	last_line = sci_get_line_from_position(sci, sel_end);
+	/* Find the last line with chars selected (not EOL char) */
+	if (sci_get_col_from_position(sci, sel_end) == 0)
+		last_line--;
 
 	if (sci_get_lines_selected(sci) <= 1)
 	{
@@ -5306,33 +5246,23 @@ void editor_indent(GeanyEditor *editor, gboolean increase)
 	}
 	else
 	{
-		gint start, end;
-		gint line, lstart, lend;
-
-		editor_select_lines(editor, FALSE);
-		start = sci_get_selection_start(sci);
-		end = sci_get_selection_end(sci);
-		lstart = sci_get_line_from_position(sci, start);
-		lend = sci_get_line_from_position(sci, end);
-		if (end == sci_get_length(sci))
-			lend++;	/* for last line with text on it */
-
 		sci_start_undo_action(sci);
-		for (line = lstart; line < lend; line++)
+		for (line = first_line; line <= last_line; line++)
 		{
 			editor_change_line_indent(editor, line, increase);
 		}
 		sci_end_undo_action(sci);
 	}
 
-	/* restore caret and anchor position */
-	if (caret_pos >= caret_indent_pos)
-		caret_offset += sci_get_line_length(sci, caret_line) - caret_line_len;
-	if (anchor_pos >= anchor_indent_pos)
-		anchor_offset += sci_get_line_length(sci, anchor_line) - anchor_line_len;
-
-	SSM(sci, SCI_SETCURRENTPOS, sci_get_position_from_line(sci, caret_line) + caret_offset, 0);
-	SSM(sci, SCI_SETANCHOR, sci_get_position_from_line(sci, anchor_line) + anchor_offset, 0);
+	gint start_indent_new = sci_get_line_indentation(sci, start_line);
+	gint start_pos = sci_get_position_from_col(sci, start_line, start_col == 0 ? 0 : start_col + start_indent_new - start_indent);
+	gint end_indent_new = sci_get_line_indentation(sci, end_line);
+	gint end_line_start = sci_get_position_from_line(sci, end_line);
+	gint end_pos = end_col == 0 ? end_line_start : MAX(end_line_start + 1, sci_get_position_from_col(sci, end_line, end_col + end_indent_new - end_indent));
+	if (caret_pos == sel_start)
+		sci_set_selection(sci, end_pos, start_pos);
+	else
+		sci_set_selection(sci, start_pos, end_pos);
 }
 
 

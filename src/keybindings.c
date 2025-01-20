@@ -2349,22 +2349,6 @@ static void reflow_lines(GeanyEditor *editor, gint column)
 }
 
 
-// WZ-TODO: remove
-// /* deselect last newline of selection, if any */
-// static void sci_deselect_last_newline(ScintillaObject *sci)
-// {
-// 	gint start, end;
-// 
-// 	start = sci_get_selection_start(sci);
-// 	end = sci_get_selection_end(sci);
-// 	if (end > start && sci_get_col_from_position(sci, end) == 0)
-// 	{
-// 		end = sci_get_line_end_position(sci, sci_get_line_from_position(sci, end - 1));
-// 		sci_set_selection(sci, start, end);
-// 	}
-// }
-
-
 static void reflow_paragraph(GeanyEditor *editor)
 {
 	ScintillaObject *sci = editor->sci;
